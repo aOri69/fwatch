@@ -19,4 +19,4 @@ target/
 /target
 
 # Ignore VSCode settings
-./vscode
+/.vscode
