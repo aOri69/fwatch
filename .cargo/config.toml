@@ -1,0 +1,5 @@
+[env]
+# CARGO_LOG = "info"
+# RUST_BACKTRACE = "1"
+RUST_LOG = "trace"
+RUST_LOG_STYLE = "always"
