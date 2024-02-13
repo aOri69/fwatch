@@ -20,3 +20,6 @@ target/
 
 # Ignore VSCode settings
 /.vscode
+
+# Skip testing directory for filewatcher
+sync_test/
