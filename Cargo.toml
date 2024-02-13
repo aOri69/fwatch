@@ -10,7 +10,11 @@ repository = "https://github.com/aOri69/FileWatcher.git"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+env_logger = "0.11.1"
 libc = "0.2.153"
+log = "0.4.20"
+notify = "6.1.1"
+walkdir = "2.4.0"
 
 # [target.'cfg(windows)'.dependencies]
 # windows = { version = "0.52.0", features = ["Win32_Foundation", "Win32_System_IO", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_Security"] }
