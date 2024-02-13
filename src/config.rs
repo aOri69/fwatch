@@ -43,8 +43,8 @@ impl From<std::io::Error> for ConfigError {
 
 #[derive(Debug)]
 pub struct Config {
-    source: PathBuf,
-    destination: PathBuf,
+    pub(super) source: PathBuf,
+    pub(super) destination: PathBuf,
 }
 
 impl Config {
