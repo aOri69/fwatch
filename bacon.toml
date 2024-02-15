@@ -57,10 +57,12 @@ command = [
     "cargo", "run",
     "--color", "always",
     # put launch parameters for your program behind a `--` separator
+    "--", "./sync_test/dir1/", "./sync_test/dir2/"
 ]
 need_stdout = true
 allow_warnings = true
 background = true
+env.RUST_LOG = "info"
 
 # This parameterized job runs the example of your choice, as soon
 # as the code compiles.
@@ -71,14 +73,15 @@ command = ["cargo", "run", "--color", "always", "--example"]
 need_stdout = true
 allow_warnings = true
 
-[jobs.run_with_params]
+[jobs.run_with_log]
 command = ["cargo", "run", "--color", "always", "--", "./sync_test/dir1/", "./sync_test/dir2/"]
 need_stdout = true
 allow_warnings = true
+env.RUST_LOG = "trace"
 
 # You may define here keybindings that would be specific to
 # a project, for example a shortcut to launch a specific job.
 # Shortcuts to internal functions (scrolling, toggling, etc.)
 # should go in your personal global prefs.toml file instead.
 [keybindings]
-ctrl-n = "job:run_with_params"
+ctrl-n = "job:run_with_log"
