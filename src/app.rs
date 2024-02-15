@@ -90,38 +90,64 @@ impl App {
         Ok(())
     }
 
+    fn rename<P: AsRef<Path>>(&self, from: P, to: P) -> Result<(), AppError> {
+        let new_filename = to.as_ref().file_name().unwrap();
+        let old_filename = from.as_ref().file_name().unwrap();
+        let destination = self.build_dest_path(to.as_ref())?;
+
+        let from = destination.with_file_name(old_filename);
+        let to = destination.with_file_name(new_filename);
+
+        log::info!("renaming:\n{:?}\n{:?}", from, to);
+
+        Ok(fs::rename(from, to)?)
+    }
+
     fn copy<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
         let src = src.as_ref();
         let dst = self.build_dest_path(src)?;
         log::info!("copy: {:?}", dst.file_name().unwrap());
-        let _ = fs::copy(src, dst)?;
-        Ok(())
+        // fs::create_dir_all(dst.as_path())?;
+        // let _ = fs::copy(src, dst)?;
+        match fs::copy(src, dst.as_path()) {
+            Ok(_) => Ok(()),
+            Err(err) => match err.kind() {
+                std::io::ErrorKind::NotFound => {
+                    fs::create_dir_all(dst.as_path().parent().unwrap())?;
+                    fs::copy(src, dst)?;
+                    Ok(())
+                }
+                _ => {
+                    log::error!("{err}");
+                    Err(err.into())
+                }
+            },
+        }
     }
 
     fn remove<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
         let src = src.as_ref();
-        let dst = self.build_dest_path(src)?;
+        let dst = self.build_dest_path(src)?; // TO-DO
         log::info!("remove: {:?}", dst.file_name().unwrap());
         Ok(fs::remove_file(dst)?)
     }
 
     fn build_dest_path<P: AsRef<Path>>(&self, src: P) -> Result<PathBuf, AppError> {
-        // Construct destination path with changing prefixes
-        let src = src.as_ref().canonicalize()?;
-        let src_prefix = self.source.as_path().canonicalize()?;
-        let dst_canoncical = &self.destination.canonicalize()?;
-        let dst = Path::new(dst_canoncical).join(src.strip_prefix(src_prefix).unwrap());
+        let src_copy = src.as_ref().to_path_buf();
 
-        log::debug!(
-            "src {}",
-            src.to_str().unwrap_or_default()
-        );
-        log::debug!(
-            "dst {}",
-            dst.to_str().unwrap_or_default()
-        );
+        // TO-DO
+        // let mut s = src_copy.to_string_lossy().to_string();
+        // let index = s
+        //     .find(self.source.as_path().to_str().unwrap())
+        //     .expect("Expected root path in the string");
+        // let s = s.drain(..index);
 
-        Ok(dst)
+        // s.
+
+        let src_suffix = src_copy.strip_prefix(self.source.as_path()).unwrap();
+        let result = Path::new(self.destination.as_path()).join(src_suffix);
+        dbg!(&result);
+        Ok(result)
     }
 
     fn sync_by_metadata<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
@@ -151,7 +177,8 @@ impl App {
                         "syncing(metadata change): {:?}",
                         dst.file_name().unwrap()
                     );
-                    let _ = fs::copy(src, dst)?;
+                    // let _ = fs::copy(src, dst)?;
+                    self.copy(src)?;
                 }
             }
             Err(err) => match err.kind() {
@@ -161,7 +188,8 @@ impl App {
                         "syncing(file not present): {:?}",
                         dst.file_name().unwrap()
                     );
-                    let _ = fs::copy(src, dst)?;
+                    // let _ = fs::copy(src, dst)?;
+                    self.copy(src)?;
                 }
                 _ => log::error!("{err}"),
             },
@@ -183,6 +211,8 @@ impl App {
     }
 
     fn watch<P: AsRef<Path>>(&self, path: P) -> notify::Result<()> {
+        use notify::event::ModifyKind;
+        use notify::event::RenameMode;
         use notify::EventKind;
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -197,12 +227,34 @@ impl App {
 
         log::info!("watch started: {:?}", path.as_ref());
 
+        let mut files_to_rename = Vec::with_capacity(1);
+
         for res in rx {
             match res {
                 Ok(event) => {
                     log::info!("Change: {event:?}");
                     match event.kind {
-                        EventKind::Create(_) | EventKind::Modify(_) => {
+                        EventKind::Modify(ModifyKind::Name(rename_mode)) => match rename_mode {
+                            RenameMode::From => files_to_rename = event.paths,
+                            RenameMode::To => {
+                                let mut new_filenames = event.paths;
+                                files_to_rename.iter().for_each(
+                                    |old_filename| match new_filenames.pop() {
+                                        Some(new_filename) => {
+                                            if let Err(e) = self.rename(old_filename, &new_filename) {
+                                                log::error!("{e}");
+                                            }
+                                        }
+                                        None => log::error!(
+                                            "Cannot rename {:?}. Nothing left in the event",
+                                            old_filename
+                                        ),
+                                    },
+                                )
+                            }
+                            _ => log::warn!("rename mode could not be handled: {rename_mode:?}"),
+                        },
+                        EventKind::Create(_) | EventKind::Modify(ModifyKind::Any) => {
                             event.paths.iter().for_each(|p| {
                                 if let Err(e) = self.copy(p) {
                                     log::error!("{e}");
