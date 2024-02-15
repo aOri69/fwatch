@@ -27,7 +27,9 @@ impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             ConfigError::WrongArguments => f.write_str(self.as_str()),
-            ConfigError::IOError(ref cause) => write!(f, "{}", cause),
+            ConfigError::IOError(ref cause) => {
+                write!(f, "{}", cause)
+            }
             ConfigError::Other => f.write_str(self.as_str()),
         }
     }
@@ -51,10 +53,7 @@ impl Config {
     pub fn from_args() -> CResult<Config> {
         use std::{collections::VecDeque, env};
 
-        let mut args = env::args()
-            .skip(1)
-            .map(PathBuf::from)
-            .collect::<VecDeque<_>>();
+        let mut args = env::args().skip(1).map(PathBuf::from).collect::<VecDeque<_>>();
 
         let (Some(source), Some(destination)) = (args.pop_front(), args.pop_front()) else {
             return Err(ConfigError::WrongArguments);
@@ -64,10 +63,7 @@ impl Config {
     }
 
     pub fn build(source: PathBuf, destination: PathBuf) -> Self {
-        Self {
-            source,
-            destination,
-        }
+        Self { source, destination }
     }
 
     pub fn source(&self) -> &PathBuf {
