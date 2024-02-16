@@ -142,7 +142,6 @@ impl App {
         let src_str = from_str.as_ref().to_string_lossy().to_string();
         let soruce_prefix = self.source.as_path().to_string_lossy().to_string();
         if let Some(mut offset) = src_str.find(&soruce_prefix) {
-            dbg!(offset);
             let prefix = match offset {
                 0 => self.source.as_path(),
                 _ => {
