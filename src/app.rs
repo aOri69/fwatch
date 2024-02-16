@@ -294,6 +294,8 @@ impl App {
                             });
                         }
                         EventKind::Modify(ModifyKind::Any) => {
+                            // During directory removal there will be the second MODYFY(ANY) event
+                            // causing parent directory to update itself for some reason
                             event.paths.iter().for_each(|p| {
                                 if let Err(e) = self.copy(p) {
                                     log::error!("{e}");
