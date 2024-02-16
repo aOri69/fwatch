@@ -8,6 +8,8 @@ use std::{
 pub enum AppError {
     IoError(std::io::Error),
     SystemTime(std::time::SystemTimeError),
+    PathErr(String),
+    StripPrefix(std::path::StripPrefixError),
 }
 
 impl std::error::Error for AppError {}
@@ -24,15 +26,19 @@ impl From<std::time::SystemTimeError> for AppError {
     }
 }
 
+impl From<std::path::StripPrefixError> for AppError {
+    fn from(value: std::path::StripPrefixError) -> Self {
+        Self::StripPrefix(value)
+    }
+}
+
 impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            AppError::IoError(ref e) => {
-                write!(f, "IO: {e}")
-            }
-            AppError::SystemTime(ref e) => {
-                write!(f, "SystemTime: {e}")
-            }
+            AppError::IoError(ref e) => write!(f, "IO: {e}"),
+            AppError::SystemTime(ref e) => write!(f, "SystemTime: {e}"),
+            AppError::PathErr(ref e) => write!(f, "Path error: {e}"),
+            AppError::StripPrefix(ref e) => write!(f, "Strip Prefix: {e}"),
         }
     }
 }
@@ -132,22 +138,36 @@ impl App {
         Ok(fs::remove_file(dst)?)
     }
 
-    fn build_dest_path<P: AsRef<Path>>(&self, src: P) -> Result<PathBuf, AppError> {
-        let src_copy = src.as_ref().to_path_buf();
+    fn build_dest_path<P: AsRef<Path>>(&self, from_str: P) -> Result<PathBuf, AppError> {
+        let src_str = from_str.as_ref().to_string_lossy().to_string();
+        let soruce_prefix = self.source.as_path().to_string_lossy().to_string();
+        if let Some(mut offset) = src_str.find(&soruce_prefix) {
+            dbg!(offset);
+            let prefix = match offset {
+                0 => self.source.as_path(),
+                _ => {
+                    offset += soruce_prefix.len();
+                    log::debug!(
+                        "counted offset for {} == {}:",
+                        src_str,
+                        offset
+                    );
+                    Path::new(src_str.get(..offset).ok_or(AppError::PathErr(soruce_prefix.clone()))?)
+                }
+            };
+            let src_stripped = from_str.as_ref().strip_prefix(prefix)?;
+            let result = Path::new(self.destination.as_path()).join(src_stripped);
 
-        // TO-DO
-        // let mut s = src_copy.to_string_lossy().to_string();
-        // let index = s
-        //     .find(self.source.as_path().to_str().unwrap())
-        //     .expect("Expected root path in the string");
-        // let s = s.drain(..index);
+            log::debug!(
+                "buildig destination:\nsource path: {}\nstripped to: {:?}\nresult: {:?}",
+                &src_str,
+                src_stripped,
+                result
+            );
+            return Ok(result);
+        }
 
-        // s.
-
-        let src_suffix = src_copy.strip_prefix(self.source.as_path()).unwrap();
-        let result = Path::new(self.destination.as_path()).join(src_suffix);
-        dbg!(&result);
-        Ok(result)
+        Err(AppError::PathErr(soruce_prefix))
     }
 
     fn sync_by_metadata<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
@@ -254,8 +274,15 @@ impl App {
                             }
                             _ => log::warn!("rename mode could not be handled: {rename_mode:?}"),
                         },
-                        EventKind::Create(_) | EventKind::Modify(ModifyKind::Any) => {
+                        EventKind::Create(_) => {
                             event.paths.iter().for_each(|p| {
+                                if let Err(e) = self.copy(p) {
+                                    log::error!("{e}");
+                                }
+                            });
+                        }
+                        EventKind::Modify(ModifyKind::Any) => {
+                            event.paths.iter().filter(|&p| p.is_file()).for_each(|p| {
                                 if let Err(e) = self.copy(p) {
                                     log::error!("{e}");
                                 }
