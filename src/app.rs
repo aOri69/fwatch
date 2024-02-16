@@ -113,8 +113,13 @@ impl App {
         let src = src.as_ref();
         let dst = self.build_dest_path(src)?;
         log::info!("copy: {:?}", dst.file_name().unwrap());
-        // fs::create_dir_all(dst.as_path())?;
-        // let _ = fs::copy(src, dst)?;
+
+        if src.is_dir() {
+            log::debug!("IS DIRECTORY: {src:?}");
+            fs::create_dir_all(dst.as_path())?;
+            return Ok(());
+        }
+
         match fs::copy(src, dst.as_path()) {
             Ok(_) => Ok(()),
             Err(err) => match err.kind() {
@@ -133,8 +138,16 @@ impl App {
 
     fn remove<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
         let src = src.as_ref();
-        let dst = self.build_dest_path(src)?; // TO-DO
+        let dst = self.build_dest_path(src)?;
         log::info!("remove: {:?}", dst.file_name().unwrap());
+
+        // src doesn't exist anymore
+        if dst.is_dir() {
+            log::debug!("IS DIRECTORY: {src:?}");
+            fs::remove_dir(dst.as_path())?;
+            return Ok(());
+        }
+
         Ok(fs::remove_file(dst)?)
     }
 
@@ -281,7 +294,7 @@ impl App {
                             });
                         }
                         EventKind::Modify(ModifyKind::Any) => {
-                            event.paths.iter().filter(|&p| p.is_file()).for_each(|p| {
+                            event.paths.iter().for_each(|p| {
                                 if let Err(e) = self.copy(p) {
                                     log::error!("{e}");
                                 }
