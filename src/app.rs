@@ -1,14 +1,23 @@
+//! Main worker module
+//! Represented by [App] structure.
+
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 
+/// Application error wrapper
 #[derive(Debug)]
 pub enum AppError {
+    /// [Error](std::error::Error) wrapper to represent errors from Input/Output
     IoError(std::io::Error),
+    /// [SystemTimeError](std::time::SystemTimeError) wrapper
     SystemTime(std::time::SystemTimeError),
+    /// Generic Path error. Mostly represents invalid paths.
     PathErr(String),
+    /// [StripPrefixError](std::path::StripPrefixError) wrapper.
+    /// Used in ['build_dest_path()'] as error propogation from [std::path::Path::strip_prefix()] function
     StripPrefix(std::path::StripPrefixError),
 }
 
@@ -43,12 +52,21 @@ impl std::fmt::Display for AppError {
     }
 }
 
+/// Main worker.
+///
+/// Contains two paths:
+/// source and destination as [PathBuf]
 pub struct App {
+    /// Source path to monitor changes
     source: PathBuf,
+    /// Destination path for syncronisation
     destination: PathBuf,
 }
 
 impl App {
+    /// Application constructor.
+    ///
+    /// Accepts [Config](crate::Config) as an input.
     pub fn new(config: crate::Config) -> Self {
         let crate::Config { source, destination } = config;
 
@@ -61,12 +79,16 @@ impl App {
         Self { source, destination }
     }
 
+    /// Main worker method.
+    /// todo!()
     pub fn run(&mut self) -> Result<(), AppError> {
+        // Just an error propogation
         let _ = self.source.read_dir()?;
         let _ = self.destination.read_dir()?;
-
+        // Initial scan of source directory
+        // with copying everything mismatched
         self.initial_sync()?;
-
+        // Main watch event handler
         if let Err(error) = self.watch(self.source.as_path()) {
             log::error!("Error: {error:?}");
         }
@@ -258,13 +280,13 @@ impl App {
         watcher.watch(path.as_ref(), RecursiveMode::Recursive)?;
 
         log::info!("watch started: {:?}", path.as_ref());
-
+        // 95 percent of cases there should be only one path
         let mut files_to_rename = Vec::with_capacity(1);
 
         for res in rx {
             match res {
                 Ok(event) => {
-                    log::info!("Change: {event:?}");
+                    log::trace!("Change: {event:?}");
                     match event.kind {
                         EventKind::Modify(ModifyKind::Name(rename_mode)) => match rename_mode {
                             RenameMode::From => files_to_rename = event.paths,
@@ -323,10 +345,13 @@ impl App {
 #[cfg(test)]
 mod tests {
     use crate::{App, Config};
-    use log::error;
+    use log::{error, LevelFilter};
 
     fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
+        let _ = env_logger::builder()
+            .filter_level(LevelFilter::Debug)
+            .is_test(true)
+            .try_init();
     }
 
     #[test]
