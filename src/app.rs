@@ -80,7 +80,13 @@ impl App {
     }
 
     /// Main worker method.
-    /// todo!()
+    ///
+    /// # Errors
+    ///
+    /// - [AppError::IoError] whould be returned if the source path doesn't exist
+    /// - [AppError::IoError] whould be returned if the destination path doesn't exist
+    /// - [App::initial_sync()] can also throw [AppError]
+    ///
     pub fn run(&mut self) -> Result<(), AppError> {
         // Just an error propogation
         let _ = self.source.read_dir()?;
@@ -96,6 +102,17 @@ impl App {
         Ok(())
     }
 
+    /// First run syncronisation.
+    ///
+    /// Initial scan of source directory is triggered only
+    /// at the beginning of the execution
+    /// with copying everything mismatched
+    ///
+    /// # Errors
+    ///
+    /// [AppError] whould be returned if:
+    ///
+    /// - [sync_by_metadata](fn@App::sync_by_metadata) function fails
     fn initial_sync(&mut self) -> Result<(), AppError> {
         log::info!(
             "Initial scan started: {:?}",
@@ -118,6 +135,7 @@ impl App {
         Ok(())
     }
 
+    /// Rename file from destination path to the same name at the destination
     fn rename<P: AsRef<Path>>(&self, from: P, to: P) -> Result<(), AppError> {
         let new_filename = to.as_ref().file_name().unwrap();
         let old_filename = from.as_ref().file_name().unwrap();
@@ -131,6 +149,8 @@ impl App {
         Ok(fs::rename(from, to)?)
     }
 
+    /// Copies the file from source to destination
+    /// creating all necessary directories recursively
     fn copy<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
         let src = src.as_ref();
         let dst = self.build_dest_path(src)?;
@@ -158,6 +178,8 @@ impl App {
         }
     }
 
+    /// Removes directory or file from the destination
+    /// keeping the same path as in the src parameter
     fn remove<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
         let src = src.as_ref();
         let dst = self.build_dest_path(src)?;
@@ -173,6 +195,8 @@ impl App {
         Ok(fs::remove_file(dst)?)
     }
 
+    /// Replaces the suffix in the provided path
+    /// to create the same path at the destination folder
     fn build_dest_path<P: AsRef<Path>>(&self, from_str: P) -> Result<PathBuf, AppError> {
         let src_str = from_str.as_ref().to_string_lossy().to_string();
         let soruce_prefix = self.source.as_path().to_string_lossy().to_string();
@@ -204,6 +228,12 @@ impl App {
         Err(AppError::PathErr(soruce_prefix))
     }
 
+    /// Syncronises source path to the destination by checking
+    /// the source file metadata.
+    ///
+    /// If the elapsed time in seconds since the last change
+    /// differs from destination file, then copies the file.
+    /// Or if the file at the destination directory does not exist.
     fn sync_by_metadata<P: AsRef<Path>>(&self, src: P) -> Result<(), AppError> {
         let src_meta = fs::metadata(&src)?;
         let src_last_modified = src_meta.modified()?.elapsed()?.as_secs();
@@ -251,6 +281,7 @@ impl App {
         Ok(())
     }
 
+    /// Recursive walkthrough all directories and collect them.
     fn collect_dir_entries<P: AsRef<Path>>(path: P) -> Vec<PathBuf> {
         walkdir::WalkDir::new(path)
             .into_iter()
@@ -264,6 +295,18 @@ impl App {
             .collect::<Vec<_>>()
     }
 
+    /// Watcher method.
+    ///
+    /// All data from watcher is sent via [MPSC channels](std::sync::mpsc::channel())
+    /// Events being captured:
+    ///
+    /// - [Modify](notify::EventKind::Modify)
+    /// - [Create](notify::EventKind::Create)
+    /// - [Remove](notify::EventKind::Remove)
+    ///
+    /// Modify event captured differently
+    /// based on the [ModifyKind](notify::event::ModifyKind)
+    /// One is captured during renaming, another one is during file modification
     fn watch<P: AsRef<Path>>(&self, path: P) -> notify::Result<()> {
         use notify::event::ModifyKind;
         use notify::event::RenameMode;
