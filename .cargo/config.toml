@@ -3,3 +3,6 @@
 # RUST_BACKTRACE = "1"
 RUST_LOG = "info"
 # RUST_LOG_STYLE = "always"
+
+[build]
+rustdocflags = ["--document-private-items"]
